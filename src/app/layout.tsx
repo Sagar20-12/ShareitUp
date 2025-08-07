@@ -131,7 +131,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://flash-share.vercel.app/",
+    // url: "https://flash-share.vercel.app/",
     title: "ShareUp - Fast & Secure File Sharing",
     description: "Share files instantly with ShareUp. Secure, fast, and easy-to-use file sharing platform with QR code support.",
     siteName: "ShareUp",

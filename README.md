@@ -1,7 +1,7 @@
 
-# ⚡ FlashShare
+# ⚡ ShareUp
 
-Welcome to **FlashShare** — the fastest and easiest way to share files with anyone, anytime. Send large files securely with a simple link, no account required.
+Welcome to **ShareUp** — the fastest and easiest way to share files with anyone, anytime. Send large files securely with a simple link, no account required.
 
 <Button>🚀 Get Started</Button>
 

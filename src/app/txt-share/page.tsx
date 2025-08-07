@@ -47,7 +47,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children }) => (
     )}
   </AnimatePresence>
 );
-export default function FlashShare() {
+export default function ShareUp() {
   const [noteContent, setNoteContent] = useState("# Welcome to ShareUp\n\nStart typing your note here...");
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [shortUrl, setShortUrl] = useState('');
