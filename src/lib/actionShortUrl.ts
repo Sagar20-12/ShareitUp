@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export default async function generateShortUrl(publicUrl: string) {
+export default async function GenerateShortUrl(publicUrl: string) {
   try {
     const response = await axios.post("/api/short-url", { publicUrl });
     // Ensure the response contains the expected data structure

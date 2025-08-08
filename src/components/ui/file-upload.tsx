@@ -68,6 +68,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
   const [shortUrl, setShortUrl] = useState<string>("");
   const [showConfetti, setShowConfetti] = useState(false);
 
+  // Check environment variables on component mount
+  React.useEffect(() => {
+    console.log('Environment check:');
+    console.log('NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Set' : 'Missing');
+    console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Set' : 'Missing');
+  }, []);
+
   const handleFileChange = (newFiles: File[]) => {
     setFiles(prev => [...prev, ...newFiles]);
     onChange?.(newFiles);
@@ -97,6 +104,15 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
     setUploadStatus("uploading");
     setError("");
     
+    // Test Supabase connection first
+    console.log('Testing Supabase connection...');
+    const { data: testData, error: testError } = await supabase.storage.listBuckets();
+    if (testError) {
+      console.error('Supabase connection test failed:', testError);
+      throw new Error(`Supabase connection failed: ${testError.message}`);
+    }
+    console.log('Supabase connection successful, available buckets:', testData);
+    
     let uploadFile: File | Blob;
     let fileName: string;
     
@@ -117,23 +133,52 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
     }
     
     const filePath = `public/${fileName}`;
-        const { error: uploadError } = await supabase.storage
-            .from('files')
+    console.log('Attempting to upload file:', { fileName, filePath, fileType: files.length === 1 ? files[0].type : 'application/zip' });
+    
+    // Try different bucket names in case the bucket is named differently
+    const bucketNames = ['files', 'storage', 'uploads', 'public'];
+    let uploadError = null;
+    let successfulBucket = null;
+    
+    for (const bucketName of bucketNames) {
+      try {
+        console.log(`Trying bucket: ${bucketName}`);
+        const { error } = await supabase.storage
+            .from(bucketName)
             .upload(filePath, uploadFile, {
                 cacheControl: '3600',
                 upsert: false,
                 contentType: files.length === 1 ? files[0].type : 'application/zip'
             });
 
-        if (uploadError) {
-            throw uploadError;
+        if (!error) {
+          successfulBucket = bucketName;
+          console.log(`Successfully uploaded to bucket: ${bucketName}`);
+          break;
+        } else {
+          console.log(`Failed to upload to bucket ${bucketName}:`, error);
+          uploadError = error;
         }
+      } catch (err) {
+        console.log(`Exception uploading to bucket ${bucketName}:`, err);
+        uploadError = err;
+      }
+    }
 
-        const { data: { publicUrl } } = supabase.storage
-            .from('files')
-            .getPublicUrl(filePath);
+    if (!successfulBucket) {
+      console.error('All bucket attempts failed. Last error:', uploadError);
+      throw uploadError || new Error('Failed to upload to any storage bucket');
+    }
 
+    console.log('File uploaded successfully, getting public URL...');
+    const { data: { publicUrl } } = supabase.storage
+        .from(successfulBucket)
+        .getPublicUrl(filePath);
+
+        console.log('Public URL obtained:', publicUrl);
         const shortURL = await GenerateShortUrl(publicUrl);
+        console.log('Short URL generated:', shortURL);
+        
         setShortUrl(shortURL);
         setDownloadUrl(publicUrl);
         setUploadStatus("complete");
