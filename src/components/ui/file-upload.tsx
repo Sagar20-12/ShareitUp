@@ -3,23 +3,14 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { IconUpload, IconX, IconQrcode, IconCopy, IconDownload } from "@tabler/icons-react";
 import { useDropzone, FileRejection } from "react-dropzone";
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/client';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import GenerateShortUrl from "@/lib/actionShortUrl";
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import JSZip from 'jszip';
 
-// Initialize Supabase client with proper error handling
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase environment variables');
-}
-
-const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
-
+const supabase = createClient();
 const mainVariant = {
   initial: { x: 0, y: 0 },
   animate: { x: 20, y: -20, opacity: 0.9 },
@@ -80,15 +71,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
   const [shortUrl, setShortUrl] = useState<string>("");
   const [showConfetti, setShowConfetti] = useState(false);
 
-  // Check environment variables and Supabase connection on component mount
+  // Check environment variables on component mount
   React.useEffect(() => {
     console.log('Environment check:');
-    console.log('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? 'Set' : 'Missing');
-    console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseKey ? 'Set' : 'Missing');
-    
-    if (!supabase) {
-      setError('Supabase configuration is missing. Please check your environment variables.');
-    }
+    console.log('NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Set' : 'Missing');
+    console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Set' : 'Missing');
   }, []);
 
   const handleFileChange = (newFiles: File[]) => {
@@ -126,84 +113,91 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
       setUploadStatus("uploading");
       setError("");
       
-      // Test Supabase connection first
-      console.log('Testing Supabase connection...');
-      const { data: testData, error: testError } = await supabase.storage.listBuckets();
-      if (testError) {
-        console.error('Supabase connection test failed:', testError);
-        throw new Error(`Supabase connection failed: ${testError.message}`);
-      }
-      console.log('Supabase connection successful, available buckets:', testData);
-      
-      // Check if our bucket exists
+      // We'll directly attempt to upload to the bucket instead of listing buckets.
+      // Listing buckets is an admin operation and requires the service role key,
+      // which we do not have on the client. If the bucket truly doesn't exist,
+      // the upload call will return a clear error that we surface below.
       const bucketName = 'shareup';
-      const bucketExists = testData?.find(bucket => bucket.name === bucketName);
-      
-      if (!bucketExists) {
-        console.log(`Bucket '${bucketName}' not found. Available buckets:`, testData?.map(b => b.name));
-        throw new Error(`Storage bucket '${bucketName}' not found. Please create it in your Supabase dashboard.`);
-      }
       
       let uploadFile: File | Blob;
       let fileName: string;
       
       if (files.length === 1) {
         // Use the original filename but add random numbers and date
-        const fileExt = files[0].name.split('.').pop();
-        const baseFileName = files[0].name.slice(0, -(fileExt?.length ?? 0) - 1);
-        const randomNum = Math.floor(Math.random() * 900 + 100);
-        const today = new Date().toISOString().split('T')[0];
+        const fileExt = files[0].name.split('.').pop(); // Get file extension
+        const baseFileName = files[0].name.slice(0, -(fileExt?.length ?? 0) - 1); // Remove extension
+        const randomNum = Math.floor(Math.random() * 900 + 100); // Random 3-digit number
+        const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
         fileName = `${baseFileName}-${randomNum}-${today}.${fileExt}`;
         uploadFile = files[0];
-      } else {
-        // For multiple files, create a zip
+    } else {
+        // For multiple files, create a zip with random numbers and date
         uploadFile = await createZipFile(files);
-        const randomNum = Math.floor(Math.random() * 900 + 100);
-        const today = new Date().toISOString().split('T')[0];
+        const randomNum = Math.floor(Math.random() * 900 + 100); // Random 3-digit number
+        const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
         fileName = `archive-${randomNum}-${today}.zip`;
-      }
-      
-      const filePath = `public/${fileName}`;
-      console.log('Attempting to upload file:', { fileName, filePath, fileType: files.length === 1 ? files[0].type : 'application/zip' });
-      
-      const { data, error: uploadError } = await supabase.storage
-        .from(bucketName)
-        .upload(filePath, uploadFile, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: files.length === 1 ? files[0].type : 'application/zip'
-        });
+    }
+    
+    const filePath = `public/${fileName}`;
+    console.log('Attempting to upload file:', { fileName, filePath, fileType: files.length === 1 ? files[0].type : 'application/zip' });
+    
+    // Try different bucket names in case the bucket is named differently
+    const bucketNames = ['shareup'];
+    let uploadError = null;
+    let successfulBucket = null;
+    
+    for (const bucketName of bucketNames) {
+      try {
+        console.log(`Trying bucket: ${bucketName}`);
+        const { error } = await supabase.storage
+            .from(bucketName)
+            .upload(filePath, uploadFile, {
+                cacheControl: '3600',
+                upsert: false,
+                contentType: files.length === 1 ? files[0].type : 'application/zip'
+            });
 
-      if (uploadError) {
-        console.error('Upload failed:', uploadError);
-        throw new Error(`Upload failed: ${uploadError.message}`);
+        if (!error) {
+          successfulBucket = bucketName;
+          console.log(`Successfully uploaded to bucket: ${bucketName}`);
+          break;
+        } else {
+          console.log(`Failed to upload to bucket ${bucketName}:`, error);
+          uploadError = error;
+        }
+      } catch (err) {
+        console.log(`Exception uploading to bucket ${bucketName}:`, err);
+        uploadError = err;
       }
+    }
 
-      console.log('File uploaded successfully:', data);
-      
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from(bucketName)
+    if (!successfulBucket) {
+      console.error('All bucket attempts failed. Last error:', uploadError);
+      throw uploadError || new Error('Failed to upload to any storage bucket');
+    }
+
+    console.log('File uploaded successfully, getting public URL...');
+    const { data: { publicUrl } } = supabase.storage
+        .from(successfulBucket)
         .getPublicUrl(filePath);
 
-      console.log('Public URL obtained:', publicUrl);
-      
-      // Temporarily disable short URL generation
-      let shortURL = publicUrl;
-      console.log('Using original URL (short URL generation disabled):', shortURL);
-      
-      setShortUrl(shortURL);
-      setDownloadUrl(publicUrl);
-      setUploadStatus("complete");
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 5000);
+        console.log('Public URL obtained:', publicUrl);
+        const shortURL = await GenerateShortUrl(publicUrl);
+        console.log('Short URL generated:', shortURL);
+        
+        setShortUrl(shortURL);
+        setDownloadUrl(publicUrl);
+        setUploadStatus("complete");
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 5000);
 
     } catch (err) {
-      console.error('Upload error:', err);
-      setError(err instanceof Error ? err.message : 'Error uploading file');
-      setUploadStatus("error");
+        console.error('Upload error:', err);
+        setError(err instanceof Error ? err.message : 'Error uploading file');
+        setUploadStatus("error");
     }
-  };
+};
+
 
   const removeFile = (index: number) => (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -219,8 +213,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
   const copyToClipboard = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await navigator.clipboard.writeText(shortUrl || downloadUrl);
-      // You could add a toast notification here
+      await navigator.clipboard.writeText(shortUrl);
     } catch (err) {
       console.error('Failed to copy:', err);
     }
@@ -234,7 +227,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     multiple: true,
     noClick: false,
-    maxSize: 50 * 1024 * 1024, // 50MB
+    maxSize: 50 * 1024 * 1024,
     onDrop: handleFileChange,
     onDropRejected: (fileRejections: FileRejection[]) => {
       const error = fileRejections[0]?.errors[0]?.message || "File upload failed";
@@ -340,7 +333,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
                 {!downloadUrl && (
                   <button 
                     onClick={handleUpload}
-                    disabled={uploadStatus === "uploading" || !supabase}
+                    disabled={uploadStatus === "uploading"}
                     className="bg-green-500 text-black px-4 py-2 font-semibold rounded-lg mt-4 w-full hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {uploadStatus === "uploading" ? "Uploading..." : "Upload"}
@@ -399,7 +392,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
                           className="flex justify-center overflow-hidden"
                         >
                           <div className="relative w-48 h-48">
-                            <Image
+                            <img
                               src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
                                 downloadUrl
                               )}&color=42C773&bgcolor=000000`}
@@ -455,7 +448,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
     </div>
   );
 };
-
 export function GridPattern(): JSX.Element {
   const columns = 41;
   const rows = 11;
