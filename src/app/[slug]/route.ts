@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/client";
+import { createServerClient } from "@/lib/serverClient";
 
-const supabase = createClient();
+const supabase = createServerClient();
 
 export async function GET(req: NextRequest) {
     const { pathname } = new URL(req.url);

@@ -1,8 +1,8 @@
 import { nanoid } from "nanoid";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/client";
+import { createServerClient } from "@/lib/serverClient";
 
-const supabase = createClient();
+const supabase = createServerClient();
 
 export async function POST(req: NextRequest) {
     try {
@@ -21,10 +21,13 @@ export async function POST(req: NextRequest) {
             .insert([{ short_id: shortId, original_url: publicUrl }]); 
         if (error) {
             console.error("Database error:", error);
-            return NextResponse.json({ error: "Database error" }, { status: 500 });
+            return NextResponse.json({ error: `Database error: ${error.message}` }, { status: 500 });
         }
 
-        return NextResponse.json({ shortUrl: `https://Share-Up.vercel.app/${shortId}` });
+        // Build short URL using the current request host so it works locally and in prod
+        const url = new URL(req.url);
+        const base = `${url.protocol}//${url.host}`;
+        return NextResponse.json({ shortUrl: `${base}/${shortId}` });
     } catch (error) {
         console.error("Unexpected error:", error);
         return NextResponse.json({ error: "Failed to create short URL" }, { status: 500 });

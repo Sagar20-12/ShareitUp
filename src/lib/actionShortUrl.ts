@@ -10,6 +10,11 @@ export default async function GenerateShortUrl(publicUrl: string) {
     return response.data.shortUrl;
   } catch (error) {
     console.error("Failed to generate short URL:", error);
+    if (axios.isAxiosError(error)) {
+      const serverMsg = (error.response?.data as any)?.error;
+      const detail = serverMsg ? ` ${serverMsg}` : '';
+      throw new Error(`Error generating short URL: ${error.message}.${detail}`);
+    }
     throw new Error("Error generating short URL: " + (error instanceof Error ? error.message : "Unknown error"));
   }
 }
