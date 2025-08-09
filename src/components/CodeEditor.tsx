@@ -18,6 +18,7 @@ import { Moon, Sun } from 'lucide-react';
 import GenerateShortUrl from '@/lib/actionShortUrl';
 import { createClient } from '@/lib/client';
 import Confetti from 'react-confetti';
+import Image from "next/image";
 
 const supabase = createClient();
 interface ModalProps {
