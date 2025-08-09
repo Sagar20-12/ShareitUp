@@ -136,7 +136,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onChange }) => {
     console.log('Attempting to upload file:', { fileName, filePath, fileType: files.length === 1 ? files[0].type : 'application/zip' });
     
     // Try different bucket names in case the bucket is named differently
-    const bucketNames = ['files', 'storage', 'uploads', 'public'];
+    const bucketNames = ['shareup'];
     let uploadError = null;
     let successfulBucket = null;
     
